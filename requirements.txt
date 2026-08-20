@@ -1,0 +1,10 @@
+# CoMotion-X dependencies.
+# Keep this file synchronized with pyproject.toml when dependencies change.
+
+# Runtime
+python-dotenv>=1.0,<2
+
+# Step 1 development and validation
+pytest>=8.0,<9
+ruff>=0.6,<1
+

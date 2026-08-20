@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "comotion-x"
+version = "0.1.0"
+description = "Uncertainty-aware predictive human-robot collaboration research prototype"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "CoMotion-X contributors" }]
+dependencies = [
+  "python-dotenv>=1.0,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0,<9",
+  "ruff>=0.6,<1",
+]
+
+[project.scripts]
+comotion-x = "comotion_x.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/comotion_x"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

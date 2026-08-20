@@ -1,0 +1,16 @@
+[project]
+name = "CoMotion-X"
+seed = 42
+
+[simulation]
+timestep_seconds = 0.01
+duration_seconds = 10.0
+
+[prediction]
+horizons_seconds = [0.1, 0.2, 0.3, 0.5]
+
+[safety]
+warning_distance_m = 0.50
+critical_distance_m = 0.25
+slow_velocity_scale = 0.50
+

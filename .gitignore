@@ -1,0 +1,22 @@
+.DS_Store
+.idea/
+.vscode/
+.venv/
+.env
+.env.*
+!.env.example
+PROJECT_PLAN.md
+CoMotion-X_ Uncertainty-Aware Predictive Human–Robot Collaboration.md
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+results/runs/*
+results/figures/*
+results/tables/*
+!results/**/.gitkeep
