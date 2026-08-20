@@ -2,9 +2,10 @@ from pathlib import Path
 
 import numpy as np
 
+from comotion_x.human_model.scenarios import generate_scenario
 from comotion_x.robot.simulation import ARM_JOINT_NAMES, PandaSimulation
 
-MODEL_PATH = Path("third_party/mujoco_menagerie/franka_emika_panda/scene.xml")
+MODEL_PATH = Path("third_party/mujoco_menagerie/franka_emika_panda/comotion_scene.xml")
 
 
 def make_simulation() -> PandaSimulation:
@@ -32,6 +33,7 @@ def test_panda_model_and_state_load() -> None:
         "link7",
         "hand",
     }
+    assert len(simulation.human_marker_names) == 9
 
 
 def test_planned_trajectory_is_time_aligned() -> None:
@@ -54,3 +56,12 @@ def test_reaching_run_moves_end_effector() -> None:
     assert summary.end_effector_path_length_m > 0.05
     assert np.isfinite(summary.final_joint_error_rad)
 
+
+def test_human_pose_updates_world_frame_markers() -> None:
+    simulation = make_simulation()
+    frame = generate_scenario("crossing").observation_frames[0]
+
+    simulation.set_human_pose(frame)
+
+    mocap_id = simulation._human_mocap_ids["right_wrist"]
+    assert np.allclose(simulation.data.mocap_pos[mocap_id], frame.joints["right_wrist"].position_m)

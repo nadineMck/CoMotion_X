@@ -27,6 +27,15 @@ class RobotConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class HumanConfig:
+    scenario: str
+    duration_seconds: float
+    frames_per_second: float
+    noise_standard_deviation_m: float
+    dropout_probability: float
+
+
+@dataclass(frozen=True, slots=True)
 class PredictionConfig:
     horizons_seconds: tuple[float, ...]
 
@@ -43,6 +52,7 @@ class AppConfig:
     project: ProjectConfig
     simulation: SimulationConfig
     robot: RobotConfig
+    human: HumanConfig
     prediction: PredictionConfig
     safety: SafetyConfig
 
@@ -62,6 +72,7 @@ def load_config(path: Path | str) -> AppConfig:
     project = _section(raw, "project")
     simulation = _section(raw, "simulation")
     robot = _section(raw, "robot")
+    human = _section(raw, "human")
     prediction = _section(raw, "prediction")
     safety = _section(raw, "safety")
 
@@ -74,6 +85,13 @@ def load_config(path: Path | str) -> AppConfig:
         robot=RobotConfig(
             model_path=Path(str(robot["model_path"])),
             move_duration_seconds=float(robot["move_duration_seconds"]),
+        ),
+        human=HumanConfig(
+            scenario=str(human["scenario"]),
+            duration_seconds=float(human["duration_seconds"]),
+            frames_per_second=float(human["frames_per_second"]),
+            noise_standard_deviation_m=float(human["noise_standard_deviation_m"]),
+            dropout_probability=float(human["dropout_probability"]),
         ),
         prediction=PredictionConfig(
             horizons_seconds=tuple(float(value) for value in prediction["horizons_seconds"])
@@ -95,6 +113,12 @@ def _validate(config: AppConfig) -> None:
         raise ValueError("simulation times must be positive")
     if config.robot.move_duration_seconds <= 0:
         raise ValueError("robot move duration must be positive")
+    if config.human.duration_seconds <= 0 or config.human.frames_per_second <= 0:
+        raise ValueError("human scenario duration and frame rate must be positive")
+    if config.human.noise_standard_deviation_m < 0:
+        raise ValueError("human observation noise must be non-negative")
+    if not 0 <= config.human.dropout_probability <= 1:
+        raise ValueError("human dropout probability must be between 0 and 1")
     if not config.prediction.horizons_seconds:
         raise ValueError("at least one prediction horizon is required")
     if any(value <= 0 for value in config.prediction.horizons_seconds):

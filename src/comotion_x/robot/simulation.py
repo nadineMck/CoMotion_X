@@ -11,8 +11,11 @@ import mujoco
 import numpy as np
 from numpy.typing import NDArray
 
+from comotion_x.core.models import PoseFrame
+
 ARM_JOINT_NAMES = tuple(f"joint{index}" for index in range(1, 8))
 LINK_BODY_NAMES = tuple(f"link{index}" for index in range(8)) + ("hand",)
+HUMAN_MARKER_PREFIX = "human_"
 
 HOME_CONFIGURATION = np.array([0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853])
 REACH_CONFIGURATION = np.array([0.45, -0.35, 0.25, -2.05, 0.20, 1.85, -0.35])
@@ -88,6 +91,20 @@ class PandaSimulation:
             name: self._name_id(mujoco.mjtObj.mjOBJ_BODY, name) for name in LINK_BODY_NAMES
         }
         self._hand_id = self._link_ids["hand"]
+        self._human_mocap_ids: dict[str, int] = {}
+        self._human_geom_ids: dict[str, int] = {}
+        for body_id in range(self.model.nbody):
+            name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_BODY, body_id)
+            if name and name.startswith(HUMAN_MARKER_PREFIX):
+                joint_name = name.removeprefix(HUMAN_MARKER_PREFIX)
+                mocap_id = int(self.model.body_mocapid[body_id])
+                if mocap_id >= 0:
+                    self._human_mocap_ids[joint_name] = mocap_id
+                geom_id = mujoco.mj_name2id(
+                    self.model, mujoco.mjtObj.mjOBJ_GEOM, f"{name}_marker"
+                )
+                if geom_id >= 0:
+                    self._human_geom_ids[joint_name] = geom_id
         self.reset()
 
     def _name_id(self, object_type: mujoco.mjtObj, name: str) -> int:
@@ -115,6 +132,25 @@ class PandaSimulation:
             joint_velocities=velocities,
             link_positions_m=links,
         )
+
+    @property
+    def human_marker_names(self) -> tuple[str, ...]:
+        return tuple(sorted(self._human_mocap_ids))
+
+    def set_human_pose(self, frame: PoseFrame) -> None:
+        if frame.frame_id != "world":
+            raise ValueError("human pose must be expressed in the MuJoCo world frame")
+        for joint_name, mocap_id in self._human_mocap_ids.items():
+            observation = frame.joints.get(joint_name)
+            geom_id = self._human_geom_ids.get(joint_name)
+            if observation is None:
+                if geom_id is not None:
+                    self.model.geom_rgba[geom_id, 3] = 0.0
+                continue
+            self.data.mocap_pos[mocap_id] = observation.position_m
+            if geom_id is not None:
+                self.model.geom_rgba[geom_id, 3] = 1.0
+        mujoco.mj_forward(self.model, self.data)
 
     def desired_configuration(self, timestamp: float) -> NDArray[np.float64]:
         if timestamp < 0:
