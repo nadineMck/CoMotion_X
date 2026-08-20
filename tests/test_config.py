@@ -16,7 +16,7 @@ def test_default_config_loads() -> None:
     assert config.estimation.observation_noise_standard_deviation_m == 0.015
     assert config.occupancy.uncertainty_sigma == 2.0
     assert config.prediction.horizons_seconds == (0.1, 0.2, 0.3, 0.5)
-    assert config.safety.critical_distance_m < config.safety.warning_distance_m
+    assert config.safety.critical_clearance_m < config.safety.caution_clearance_m
 
 
 def test_invalid_safety_distances_are_rejected(tmp_path: Path) -> None:
@@ -52,11 +52,15 @@ robot_link_radius_m = 0.055
 robot_hand_radius_m = 0.075
 uncertainty_sigma = 2.0
 [safety]
-warning_distance_m = 0.2
-critical_distance_m = 0.3
-slow_velocity_scale = 0.5
+caution_clearance_m = 0.3
+high_risk_clearance_m = 0.12
+critical_clearance_m = 0.4
+caution_velocity_scale = 0.6
+high_risk_velocity_scale = 0.25
+hysteresis_m = 0.03
+minimum_dwell_seconds = 0.2
 """.strip()
     )
 
-    with pytest.raises(ValueError, match="critical distance"):
+    with pytest.raises(ValueError, match="thresholds"):
         load_config(path)

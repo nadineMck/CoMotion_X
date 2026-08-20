@@ -6,9 +6,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from comotion_x.prediction.motion_predictor import PredictionSlice
-from comotion_x.robot.simulation import RobotLinkTrajectorySlice
-from comotion_x.safety.geometry import Capsule, Primitive, Sphere
+from comotion_x.core.models import PoseFrame
+from comotion_x.prediction.motion_predictor import PredictedJoint, PredictionSlice
+from comotion_x.robot.simulation import RobotLinkTrajectorySlice, RobotState
+from comotion_x.safety.geometry import Capsule, Primitive, Sphere, primitive_distance
 
 ARM_SEGMENTS = (
     ("left_upper_arm", "left_shoulder", "left_elbow"),
@@ -101,6 +102,48 @@ def robot_occupancy(
         )
     )
     return tuple(primitives)
+
+
+def current_clearance(
+    human_frame: PoseFrame,
+    robot_state: RobotState,
+    parameters: OccupancyParameters,
+) -> float:
+    if human_frame.frame_id != "world":
+        raise ValueError("current human occupancy must use the world frame")
+    zero_covariance = ((0.0, 0.0, 0.0),) * 3
+    human_slice = PredictionSlice(
+        horizon_seconds=0.0,
+        timestamp=human_frame.timestamp,
+        joints={
+            name: PredictedJoint(
+                mean_position_m=observation.position_m,
+                covariance=zero_covariance,
+            )
+            for name, observation in human_frame.joints.items()
+        },
+    )
+    robot_slice = RobotLinkTrajectorySlice(
+        timestamp=robot_state.timestamp,
+        link_positions_m=robot_state.link_positions_m,
+    )
+    human_primitives = human_occupancy(
+        human_slice,
+        OccupancyParameters(
+            human_wrist_radius_m=parameters.human_wrist_radius_m,
+            human_arm_radius_m=parameters.human_arm_radius_m,
+            human_torso_radius_m=parameters.human_torso_radius_m,
+            robot_link_radius_m=parameters.robot_link_radius_m,
+            robot_hand_radius_m=parameters.robot_hand_radius_m,
+            uncertainty_sigma=0.0,
+        ),
+    )
+    robot_primitives = robot_occupancy(robot_slice, parameters)
+    return min(
+        primitive_distance(human, robot).clearance_m
+        for human in human_primitives
+        for robot in robot_primitives
+    )
 
 
 def _uncertainty_radius(

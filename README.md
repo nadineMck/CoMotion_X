@@ -5,7 +5,7 @@
 CoMotion-X is a research prototype for comparing reactive robot-safety control with
 uncertainty-aware prediction of short-horizon human motion.
 
-The project is currently at **M4: spatiotemporal occupancy and collision-risk estimation**. See
+The project is currently at **M5: adaptive safety-controller comparison**. See
 [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the complete roadmap.
 
 ## Requirements
@@ -79,6 +79,20 @@ capsules along every major link plus a hand sphere. Human volumes expand from pr
 covariance. The risk engine aligns human and robot trajectories by timestamp and reports the
 minimum signed clearance, time to closest approach, and closest primitive pair. Negative
 clearance means the occupancy volumes overlap.
+
+Compare the unaware, current-clearance reactive, and future-clearance predictive controllers:
+
+```bash
+uv run comotion-x compare-controllers \
+  --config config/default.toml \
+  --scenario crossing
+```
+
+The controller state machine uses `NORMAL`, `CAUTION`, `HIGH_RISK`, and `CRITICAL` modes.
+These map to full speed, two configurable slowdown levels, and controlled stop. Escalation is
+immediate; hysteresis and minimum dwell time prevent rapid de-escalation and mode oscillation.
+The comparison replays identical human ground truth for all policies and reports intervention
+time, stop time, actual minimum clearance, idle time, and robot task progress.
 
 ## Current structure
 

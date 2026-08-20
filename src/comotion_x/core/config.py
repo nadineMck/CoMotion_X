@@ -59,9 +59,13 @@ class OccupancyConfig:
 
 @dataclass(frozen=True, slots=True)
 class SafetyConfig:
-    warning_distance_m: float
-    critical_distance_m: float
-    slow_velocity_scale: float
+    caution_clearance_m: float
+    high_risk_clearance_m: float
+    critical_clearance_m: float
+    caution_velocity_scale: float
+    high_risk_velocity_scale: float
+    hysteresis_m: float
+    minimum_dwell_seconds: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,9 +141,13 @@ def load_config(path: Path | str) -> AppConfig:
             uncertainty_sigma=float(occupancy["uncertainty_sigma"]),
         ),
         safety=SafetyConfig(
-            warning_distance_m=float(safety["warning_distance_m"]),
-            critical_distance_m=float(safety["critical_distance_m"]),
-            slow_velocity_scale=float(safety["slow_velocity_scale"]),
+            caution_clearance_m=float(safety["caution_clearance_m"]),
+            high_risk_clearance_m=float(safety["high_risk_clearance_m"]),
+            critical_clearance_m=float(safety["critical_clearance_m"]),
+            caution_velocity_scale=float(safety["caution_velocity_scale"]),
+            high_risk_velocity_scale=float(safety["high_risk_velocity_scale"]),
+            hysteresis_m=float(safety["hysteresis_m"]),
+            minimum_dwell_seconds=float(safety["minimum_dwell_seconds"]),
         ),
     )
     _validate(config)
@@ -182,7 +190,13 @@ def _validate(config: AppConfig) -> None:
         raise ValueError("occupancy radii must be positive")
     if config.occupancy.uncertainty_sigma < 0:
         raise ValueError("occupancy uncertainty sigma must be non-negative")
-    if not 0 < config.safety.critical_distance_m < config.safety.warning_distance_m:
-        raise ValueError("critical distance must be positive and smaller than warning distance")
-    if not 0 <= config.safety.slow_velocity_scale <= 1:
-        raise ValueError("slow velocity scale must be between 0 and 1")
+    if not (
+        config.safety.critical_clearance_m
+        < config.safety.high_risk_clearance_m
+        < config.safety.caution_clearance_m
+    ):
+        raise ValueError("safety clearance thresholds must be strictly increasing")
+    if not 0 <= config.safety.high_risk_velocity_scale < config.safety.caution_velocity_scale <= 1:
+        raise ValueError("safety velocity scales must be ordered within [0, 1]")
+    if config.safety.hysteresis_m < 0 or config.safety.minimum_dwell_seconds < 0:
+        raise ValueError("safety hysteresis and dwell time must be non-negative")

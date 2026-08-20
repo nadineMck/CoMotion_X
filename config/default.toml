@@ -34,6 +34,10 @@ robot_hand_radius_m = 0.075
 uncertainty_sigma = 2.0
 
 [safety]
-warning_distance_m = 0.50
-critical_distance_m = 0.25
-slow_velocity_scale = 0.50
+caution_clearance_m = 0.01
+high_risk_clearance_m = 0.005
+critical_clearance_m = 0.0
+caution_velocity_scale = 0.60
+high_risk_velocity_scale = 0.25
+hysteresis_m = 0.03
+minimum_dwell_seconds = 0.20

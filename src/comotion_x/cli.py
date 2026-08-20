@@ -14,6 +14,7 @@ from comotion_x.core.logging import emit_event
 from comotion_x.core.models import RiskAssessment, SafetyMode
 from comotion_x.core.reproducibility import seed_everything
 from comotion_x.estimation.state_estimator import HumanStateEstimator
+from comotion_x.evaluation.controllers import compare_controllers
 from comotion_x.evaluation.prediction import evaluate_scenario_prediction
 from comotion_x.human_model.replay import HumanReplay
 from comotion_x.human_model.scenarios import ScenarioName, generate_scenario
@@ -74,6 +75,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     risk.add_argument("--config", type=Path, default=Path("config/default.toml"))
     risk.add_argument(
+        "--scenario", choices=[name.value for name in ScenarioName], default="crossing"
+    )
+
+    compare = subparsers.add_parser(
+        "compare-controllers", help="compare unaware, reactive, and predictive M5 policies"
+    )
+    compare.add_argument("--config", type=Path, default=Path("config/default.toml"))
+    compare.add_argument(
         "--scenario", choices=[name.value for name in ScenarioName], default="crossing"
     )
     return parser
@@ -259,6 +268,29 @@ def run_risk_evaluation(config_path: Path, scenario_name: str) -> int:
     return 0
 
 
+def run_controller_comparison(config_path: Path, scenario_name: str) -> int:
+    config = load_config(config_path)
+    scenario = _scenario_from_config(config, scenario_name)
+    metrics = compare_controllers(scenario, config)
+    metrics_by_name = {metric.controller: metric for metric in metrics}
+    reactive_time = metrics_by_name["reactive"].first_intervention_timestamp
+    predictive_time = metrics_by_name["predictive"].first_intervention_timestamp
+    lead_time = (
+        reactive_time - predictive_time
+        if reactive_time is not None and predictive_time is not None
+        else None
+    )
+    emit_event(
+        "controller_comparison_completed",
+        scenario=scenario.name.value,
+        controllers={metric.controller: metric.as_dict() for metric in metrics},
+        predictive_intervention_lead_seconds=(
+            round(lead_time, 6) if lead_time is not None else None
+        ),
+    )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     load_dotenv()
     args = build_parser().parse_args(argv)
@@ -274,4 +306,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_prediction_evaluation(args.config, args.scenario)
     if args.command == "evaluate-risk":
         return run_risk_evaluation(args.config, args.scenario)
+    if args.command == "compare-controllers":
+        return run_controller_comparison(args.config, args.scenario)
     raise RuntimeError(f"Unhandled command: {args.command}")

@@ -127,9 +127,14 @@ class PandaSimulation:
 
     def reset(self) -> RobotState:
         mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
+        self._trajectory_time = 0.0
         self.model.opt.timestep = min(self.control_timestep_seconds, self.model.opt.timestep)
         mujoco.mj_forward(self.model, self.data)
         return self.state()
+
+    @property
+    def trajectory_time(self) -> float:
+        return self._trajectory_time
 
     def state(self) -> RobotState:
         positions = tuple(float(self.data.qpos[address]) for address in self._qpos_addresses)
@@ -194,13 +199,22 @@ class PandaSimulation:
         )
         return PlannedTrajectory(times=times, joint_positions=positions)
 
-    def planned_link_trajectory(self, times: tuple[float, ...]) -> RobotLinkTrajectory:
+    def planned_link_trajectory(
+        self,
+        times: tuple[float, ...],
+        trajectory_times: tuple[float, ...] | None = None,
+    ) -> RobotLinkTrajectory:
         if not times or any(timestamp < 0 for timestamp in times):
             raise ValueError("robot trajectory times must be non-empty and non-negative")
+        planned_times = trajectory_times or times
+        if len(planned_times) != len(times) or any(timestamp < 0 for timestamp in planned_times):
+            raise ValueError("robot wall and trajectory times must be aligned and non-negative")
         slices: list[RobotLinkTrajectorySlice] = []
-        for timestamp in times:
+        for timestamp, trajectory_time in zip(times, planned_times, strict=True):
             mujoco.mj_resetDataKeyframe(self.model, self._kinematic_data, 0)
-            self._kinematic_data.qpos[self._qpos_addresses] = self.desired_configuration(timestamp)
+            self._kinematic_data.qpos[self._qpos_addresses] = self.desired_configuration(
+                trajectory_time
+            )
             mujoco.mj_forward(self.model, self._kinematic_data)
             links = {
                 name: tuple(float(value) for value in self._kinematic_data.xpos[identifier])
@@ -209,12 +223,15 @@ class PandaSimulation:
             slices.append(RobotLinkTrajectorySlice(timestamp=timestamp, link_positions_m=links))
         return RobotLinkTrajectory(slices=tuple(slices))
 
-    def step(self) -> RobotState:
-        desired = self.desired_configuration(float(self.data.time))
+    def step(self, velocity_scale: float = 1.0) -> RobotState:
+        if not 0 <= velocity_scale <= 1:
+            raise ValueError("velocity scale must be between 0 and 1")
+        desired = self.desired_configuration(self._trajectory_time)
         self.data.ctrl[self._actuator_ids] = desired
         target_time = self.data.time + self.control_timestep_seconds
         while self.data.time < target_time - 1e-12:
             mujoco.mj_step(self.model, self.data)
+        self._trajectory_time += velocity_scale * self.control_timestep_seconds
         return self.state()
 
     def run(self, duration_seconds: float) -> SimulationSummary:
@@ -231,13 +248,13 @@ class PandaSimulation:
             path_length += float(np.linalg.norm(current_hand - previous_hand))
             previous_hand = current_hand
 
-        desired = self.desired_configuration(float(self.data.time))
+        desired = self.desired_configuration(self._trajectory_time)
         actual = self.data.qpos[self._qpos_addresses]
         hand = tuple(float(value) for value in self.data.xpos[self._hand_id])
         return SimulationSummary(
             duration_seconds=float(self.data.time),
             physics_steps=steps,
-            completed_moves=int(self.data.time / self.move_duration_seconds),
+            completed_moves=int(self._trajectory_time / self.move_duration_seconds),
             end_effector_path_length_m=path_length,
             final_joint_error_rad=float(np.linalg.norm(desired - actual)),
             final_end_effector_position_m=hand,

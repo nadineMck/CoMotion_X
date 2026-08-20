@@ -66,6 +66,15 @@ def test_reaching_run_moves_end_effector() -> None:
     assert np.isfinite(summary.final_joint_error_rad)
 
 
+def test_zero_velocity_scale_freezes_task_clock() -> None:
+    simulation = make_simulation()
+
+    simulation.step(velocity_scale=0.0)
+
+    assert simulation.data.time > 0
+    assert simulation.trajectory_time == 0.0
+
+
 def test_human_pose_updates_world_frame_markers() -> None:
     simulation = make_simulation()
     frame = generate_scenario("crossing").observation_frames[0]
