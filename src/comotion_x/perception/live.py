@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
+import queue
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -81,6 +84,7 @@ def run_live_camera(
     *,
     maximum_duration_seconds: float,
     display: bool = False,
+    show_robot: bool = False,
     recorded_pose_path: Path | None = None,
 ) -> LiveCameraSummary:
     simulation = PandaSimulation(
@@ -108,25 +112,54 @@ def run_live_camera(
     minimum_clearance = float("inf")
     recorded_frames: list[dict] = []
     started = time.perf_counter()
+    viewer = None
+    display_process = None
+    display_queue = None
+    display_stop = None
+    inline_display = display and not show_robot
+    if display and show_robot:
+        process_context = multiprocessing.get_context("spawn")
+        display_queue = process_context.Queue(maxsize=2)
+        display_stop = process_context.Event()
+        display_process = process_context.Process(
+            target=_camera_display_worker,
+            args=(display_queue, display_stop),
+            daemon=True,
+        )
+        display_process.start()
+    if show_robot:
+        import mujoco.viewer
+
+        viewer = mujoco.viewer.launch_passive(simulation.model, simulation.data)
+        viewer.cam.lookat[:] = (0.45, 0.15, 0.75)
+        viewer.cam.distance = 2.2
+        viewer.cam.azimuth = 135
+        viewer.cam.elevation = -20
 
     try:
         while True:
+            if viewer is not None and not viewer.is_running():
+                break
+            if display_stop is not None and display_stop.is_set():
+                break
             captured = source.read()
             if captured is None or captured.timestamp > maximum_duration_seconds:
                 break
             frames_read += 1
-            while simulation.data.time < captured.timestamp - 1e-9:
-                if last_pose is not None:
-                    simulation.set_human_pose(last_pose)
-                simulation.step(velocity_scale)
+            with viewer.lock() if viewer is not None else nullcontext():
+                while simulation.data.time < captured.timestamp - 1e-9:
+                    if last_pose is not None:
+                        simulation.set_human_pose(last_pose)
+                    simulation.step(velocity_scale)
 
             detection = detector.detect(captured.image_bgr, captured.timestamp)
             if detection is not None:
                 detections += 1
                 latencies.append(detection.inference_latency_seconds)
                 last_pose = detection.pose_frame
-                simulation.set_human_pose(last_pose)
-                robot_state = simulation.state()
+                with viewer.lock() if viewer is not None else nullcontext():
+                    simulation.set_human_pose(last_pose)
+                    robot_state = simulation.state()
                 measured_clearance = current_clearance(last_pose, robot_state, occupancy)
                 minimum_clearance = min(minimum_clearance, measured_clearance)
                 human_state = estimator.update(last_pose)
@@ -140,6 +173,11 @@ def run_live_camera(
                     wall_times, trajectory_times
                 )
                 predicted_risk = risk_engine.assess(prediction, robot_trajectory)
+                with viewer.lock() if viewer is not None else nullcontext():
+                    simulation.set_human_prediction(
+                        prediction,
+                        uncertainty_sigma=config.occupancy.uncertainty_sigma,
+                    )
                 decision = controller.update(
                     captured.timestamp,
                     current_clearance_m=measured_clearance,
@@ -166,13 +204,33 @@ def run_live_camera(
                     (0, 0, 255),
                     2,
                 )
-            if display:
+            if inline_display:
                 cv2.imshow("CoMotion-X Camera", captured.image_bgr)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
+            elif display_queue is not None:
+                _queue_latest_frame(display_queue, captured.image_bgr)
+            if viewer is not None:
+                viewer.sync()
     finally:
-        if display:
+        if inline_display:
             cv2.destroyAllWindows()
+        if display_queue is not None:
+            try:
+                display_queue.put_nowait(None)
+            except queue.Full:
+                try:
+                    display_queue.get_nowait()
+                except queue.Empty:
+                    pass
+                display_queue.put_nowait(None)
+        if display_process is not None:
+            display_process.join(timeout=3.0)
+            if display_process.is_alive():
+                display_process.terminate()
+                display_process.join(timeout=1.0)
+        if viewer is not None:
+            viewer.close()
 
     elapsed = time.perf_counter() - started
     if recorded_pose_path is not None:
@@ -260,3 +318,29 @@ def _draw_overlay(
         2,
     )
 
+
+def _queue_latest_frame(display_queue, image) -> None:
+    frame = cv2.resize(image, (960, 540), interpolation=cv2.INTER_AREA)
+    try:
+        display_queue.put_nowait(frame)
+    except queue.Full:
+        try:
+            display_queue.get_nowait()
+        except queue.Empty:
+            return
+        try:
+            display_queue.put_nowait(frame)
+        except queue.Full:
+            pass
+
+
+def _camera_display_worker(display_queue, stop_event) -> None:
+    while True:
+        frame = display_queue.get()
+        if frame is None:
+            break
+        cv2.imshow("CoMotion-X Camera", frame)
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            stop_event.set()
+            break
+    cv2.destroyAllWindows()

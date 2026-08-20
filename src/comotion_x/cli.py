@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
+import platform
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -115,6 +117,9 @@ def build_parser() -> argparse.ArgumentParser:
     source_group.add_argument("--video", type=Path, default=None, help="recorded video path")
     camera.add_argument("--duration", type=float, default=None)
     camera.add_argument("--display", action="store_true", help="show the camera overlay; q exits")
+    camera.add_argument(
+        "--robot-display", action="store_true", help="show the synchronized MuJoCo 3D viewer"
+    )
     camera.add_argument("--record-poses", type=Path, default=None)
     return parser
 
@@ -358,6 +363,7 @@ def run_camera(
     video: Path | None,
     duration: float | None,
     display: bool,
+    robot_display: bool,
     record_poses: Path | None,
 ) -> int:
     config = load_config(config_path)
@@ -372,6 +378,11 @@ def run_camera(
     maximum_duration = duration or config.camera.maximum_duration_seconds
     if maximum_duration <= 0:
         raise ValueError("camera duration must be positive")
+    if robot_display and platform.system() == "Darwin" and "MJPYTHON_BIN" not in os.environ:
+        raise RuntimeError(
+            "the MuJoCo viewer on macOS requires mjpython; run `.venv/bin/mjpython "
+            "-m comotion_x camera ... --robot-display`"
+        )
     with OpenCVFrameSource(
         source_value,
         width=config.camera.width,
@@ -388,6 +399,7 @@ def run_camera(
                 detector,
                 maximum_duration_seconds=maximum_duration,
                 display=display,
+                show_robot=robot_display,
                 recorded_pose_path=record_poses,
             )
     emit_event("camera_session_completed", **summary.as_dict())
@@ -422,6 +434,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             video=args.video,
             duration=args.duration,
             display=args.display,
+            robot_display=args.robot_display,
             record_poses=args.record_poses,
         )
     raise RuntimeError(f"Unhandled command: {args.command}")

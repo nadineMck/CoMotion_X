@@ -2,7 +2,9 @@ from pathlib import Path
 
 import numpy as np
 
+from comotion_x.estimation.state_estimator import HumanStateEstimator
 from comotion_x.human_model.scenarios import generate_scenario
+from comotion_x.prediction.motion_predictor import HumanMotionPredictor
 from comotion_x.robot.simulation import ARM_JOINT_NAMES, PandaSimulation
 
 MODEL_PATH = Path("third_party/mujoco_menagerie/franka_emika_panda/comotion_scene.xml")
@@ -83,3 +85,23 @@ def test_human_pose_updates_world_frame_markers() -> None:
 
     mocap_id = simulation._human_mocap_ids["right_wrist"]
     assert np.allclose(simulation.data.mocap_pos[mocap_id], frame.joints["right_wrist"].position_m)
+
+
+def test_human_prediction_updates_future_wrist_markers() -> None:
+    simulation = make_simulation()
+    scenario = generate_scenario("crossing", duration_seconds=1.0, frames_per_second=20.0)
+    estimator = HumanStateEstimator()
+    state = None
+    for frame in scenario.observation_frames[:5]:
+        state = estimator.update(frame)
+    assert state is not None
+    prediction = HumanMotionPredictor().predict(state, (0.1, 0.2, 0.3, 0.5))
+
+    simulation.set_human_prediction(prediction)
+
+    predicted_wrist = prediction.slices[0].joints["right_wrist"]
+    mocap_id = simulation._prediction_mocap_ids[100]
+    geom_id = simulation._prediction_geom_ids[100]
+    assert np.allclose(simulation.data.mocap_pos[mocap_id], predicted_wrist.mean_position_m)
+    assert simulation.model.geom_size[geom_id, 0] >= 0.025
+    assert simulation.model.geom_rgba[geom_id, 3] > 0

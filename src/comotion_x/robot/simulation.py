@@ -12,6 +12,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from comotion_x.core.models import PoseFrame
+from comotion_x.prediction.motion_predictor import HumanPrediction
 
 ARM_JOINT_NAMES = tuple(f"joint{index}" for index in range(1, 8))
 LINK_BODY_NAMES = tuple(f"link{index}" for index in range(8)) + ("hand",)
@@ -105,6 +106,8 @@ class PandaSimulation:
         self._kinematic_data = mujoco.MjData(self.model)
         self._human_mocap_ids: dict[str, int] = {}
         self._human_geom_ids: dict[str, int] = {}
+        self._prediction_mocap_ids: dict[int, int] = {}
+        self._prediction_geom_ids: dict[int, int] = {}
         for body_id in range(self.model.nbody):
             name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_BODY, body_id)
             if name and name.startswith(HUMAN_MARKER_PREFIX):
@@ -117,6 +120,16 @@ class PandaSimulation:
                 )
                 if geom_id >= 0:
                     self._human_geom_ids[joint_name] = geom_id
+            if name and name.startswith("prediction_right_wrist_"):
+                horizon_ms = int(name.rsplit("_", maxsplit=1)[1])
+                mocap_id = int(self.model.body_mocapid[body_id])
+                if mocap_id >= 0:
+                    self._prediction_mocap_ids[horizon_ms] = mocap_id
+                geom_id = mujoco.mj_name2id(
+                    self.model, mujoco.mjtObj.mjOBJ_GEOM, f"{name}_marker"
+                )
+                if geom_id >= 0:
+                    self._prediction_geom_ids[horizon_ms] = geom_id
         self.reset()
 
     def _name_id(self, object_type: mujoco.mjtObj, name: str) -> int:
@@ -167,6 +180,38 @@ class PandaSimulation:
             self.data.mocap_pos[mocap_id] = observation.position_m
             if geom_id is not None:
                 self.model.geom_rgba[geom_id, 3] = 1.0
+        mujoco.mj_forward(self.model, self.data)
+
+    def set_human_prediction(
+        self,
+        prediction: HumanPrediction,
+        *,
+        uncertainty_sigma: float = 2.0,
+    ) -> None:
+        if prediction.frame_id != "world":
+            raise ValueError("human prediction must use the MuJoCo world frame")
+        updated: set[int] = set()
+        for prediction_slice in prediction.slices:
+            horizon_ms = round(prediction_slice.horizon_seconds * 1000)
+            predicted_joint = prediction_slice.joints.get("right_wrist")
+            if predicted_joint is None or horizon_ms not in self._prediction_mocap_ids:
+                continue
+            self.data.mocap_pos[self._prediction_mocap_ids[horizon_ms]] = (
+                predicted_joint.mean_position_m
+            )
+            geom_id = self._prediction_geom_ids.get(horizon_ms)
+            if geom_id is not None:
+                largest_variance = float(
+                    np.linalg.eigvalsh(np.asarray(predicted_joint.covariance)).max()
+                )
+                self.model.geom_size[geom_id, 0] = max(
+                    0.025, uncertainty_sigma * math.sqrt(max(0.0, largest_variance))
+                )
+                self.model.geom_rgba[geom_id, 3] = 0.22
+            updated.add(horizon_ms)
+        for horizon_ms, geom_id in self._prediction_geom_ids.items():
+            if horizon_ms not in updated:
+                self.model.geom_rgba[geom_id, 3] = 0.0
         mujoco.mj_forward(self.model, self.data)
 
     def desired_configuration(self, timestamp: float) -> NDArray[np.float64]:

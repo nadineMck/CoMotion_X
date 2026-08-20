@@ -153,6 +153,26 @@ MediaPipe's body-relative 3D pose is converted into the MuJoCo world frame using
 translation and orientation must be calibrated for the physical camera position before using
 measured distances as experimental results.
 
+### Synchronized 3D robot visualization on macOS
+
+MuJoCo's passive viewer on macOS must run through the included `mjpython` launcher. To see
+the camera overlay and 3D Panda/digital-human scene at the same time, run:
+
+```bash
+.venv/bin/mjpython -m comotion_x camera \
+  --config config/default.toml \
+  --device 0 \
+  --duration 30 \
+  --display \
+  --robot-display \
+  --record-poses data/raw/webcam_visualization.json
+```
+
+The red markers are the tracked human joints. The translucent yellow sphere sequence shows
+the predicted right-wrist positions at 100, 200, 300, and 500 ms; sphere size represents
+prediction uncertainty. Closing the MuJoCo window or pressing `q` in the camera window ends
+the session.
+
 ## Current structure
 
 ```text

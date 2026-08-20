@@ -18,6 +18,9 @@
     <default class="human_marker">
       <geom type="sphere" size="0.035" rgba="0.95 0.25 0.15 1" contype="0" conaffinity="0" group="1"/>
     </default>
+    <default class="prediction_marker">
+      <geom type="sphere" size="0.03" rgba="1.0 0.75 0.1 0" contype="0" conaffinity="0" group="1"/>
+    </default>
   </default>
 
   <worldbody>
@@ -34,5 +37,17 @@
     <body name="human_right_wrist" mocap="true"><geom name="human_right_wrist_marker" class="human_marker"/></body>
     <body name="human_left_hip" mocap="true"><geom name="human_left_hip_marker" class="human_marker"/></body>
     <body name="human_right_hip" mocap="true"><geom name="human_right_hip_marker" class="human_marker"/></body>
+    <body name="prediction_right_wrist_100" mocap="true">
+      <geom name="prediction_right_wrist_100_marker" class="prediction_marker"/>
+    </body>
+    <body name="prediction_right_wrist_200" mocap="true">
+      <geom name="prediction_right_wrist_200_marker" class="prediction_marker"/>
+    </body>
+    <body name="prediction_right_wrist_300" mocap="true">
+      <geom name="prediction_right_wrist_300_marker" class="prediction_marker"/>
+    </body>
+    <body name="prediction_right_wrist_500" mocap="true">
+      <geom name="prediction_right_wrist_500_marker" class="prediction_marker"/>
+    </body>
   </worldbody>
 </mujoco>
