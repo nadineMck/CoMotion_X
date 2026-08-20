@@ -5,7 +5,7 @@
 CoMotion-X is a research prototype for comparing reactive robot-safety control with
 uncertainty-aware prediction of short-horizon human motion.
 
-The project is currently at **M5: adaptive safety-controller comparison**. See
+The project is currently at **M6: reproducible experiments and quantitative results**. See
 [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the complete roadmap.
 
 ## Requirements
@@ -93,6 +93,29 @@ These map to full speed, two configurable slowdown levels, and controlled stop. 
 immediate; hysteresis and minimum dwell time prevent rapid de-escalation and mode oscillation.
 The comparison replays identical human ground truth for all policies and reports intervention
 time, stop time, actual minimum clearance, idle time, and robot task progress.
+
+Run the complete experiment matrix and regenerate all quantitative artifacts:
+
+```bash
+uv run comotion-x run-experiments \
+  --config config/default.toml \
+  --seeds 42 \
+  --output results/runs/latest
+```
+
+Use comma-separated seeds such as `--seeds 42,43,44` for repeated noisy trials. The default
+suite evaluates all eight scenarios using unaware, reactive, deterministic-predictive, and
+uncertainty-aware predictive controllers. It creates:
+
+- `trial_metrics.csv` — one safety/productivity summary per trial;
+- `timesteps.csv` — every controller decision and clearance measurement;
+- `prediction_horizons.csv` — prediction error and calibration by horizon;
+- `controller_summary.csv` — aggregate controller comparison;
+- `manifest.json` — seeds, scenarios, controllers, horizons, and record counts;
+- `figures/controller_summary.png` and `figures/scenario_clearance.png`.
+
+Generated results are intentionally ignored by Git and can be reproduced from the committed
+configuration and command.
 
 ## Current structure
 

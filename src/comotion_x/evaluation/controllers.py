@@ -32,6 +32,8 @@ class ControllerMetrics:
     final_mode: SafetyMode
     first_intervention_timestamp: float | None
     first_stop_timestamp: float | None
+    safety_violation_count: int
+    productivity_ratio: float
 
     def as_dict(self) -> dict[str, str | float | int | None]:
         return {
@@ -51,7 +53,26 @@ class ControllerMetrics:
                 if self.first_stop_timestamp is not None
                 else None
             ),
+            "safety_violation_count": self.safety_violation_count,
+            "productivity_ratio": round(self.productivity_ratio, 6),
         }
+
+
+@dataclass(frozen=True, slots=True)
+class ControllerTimestep:
+    timestamp: float
+    mode: SafetyMode
+    velocity_scale: float
+    actual_clearance_m: float
+    measured_clearance_m: float
+    predicted_clearance_m: float
+    task_progress_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class ControllerTrialResult:
+    metrics: ControllerMetrics
+    timesteps: tuple[ControllerTimestep, ...]
 
 
 def controller_parameters(config: AppConfig) -> ControllerParameters:
@@ -87,7 +108,36 @@ def compare_controllers(
         ("predictive", PredictiveSafetyController(parameters)),
     )
     return tuple(
-        _run_controller(name, controller, scenario, config) for name, controller in controllers
+        _run_controller(name, controller, scenario, config).metrics
+        for name, controller in controllers
+    )
+
+
+def run_controller_trial(
+    controller_name: str,
+    scenario: HumanScenario,
+    config: AppConfig,
+) -> ControllerTrialResult:
+    parameters = controller_parameters(config)
+    controller: SafetyController
+    uncertainty_sigma = config.occupancy.uncertainty_sigma
+    if controller_name == "unaware":
+        controller = NoAwarenessController()
+    elif controller_name == "reactive":
+        controller = ReactiveSafetyController(parameters)
+    elif controller_name == "predictive_deterministic":
+        controller = PredictiveSafetyController(parameters)
+        uncertainty_sigma = 0.0
+    elif controller_name in {"predictive", "predictive_uncertainty"}:
+        controller = PredictiveSafetyController(parameters)
+    else:
+        raise ValueError(f"unknown controller: {controller_name}")
+    return _run_controller(
+        controller_name,
+        controller,
+        scenario,
+        config,
+        uncertainty_sigma=uncertainty_sigma,
     )
 
 
@@ -96,8 +146,19 @@ def _run_controller(
     controller: SafetyController,
     scenario: HumanScenario,
     config: AppConfig,
-) -> ControllerMetrics:
+    *,
+    uncertainty_sigma: float | None = None,
+) -> ControllerTrialResult:
     occupancy = occupancy_parameters(config)
+    if uncertainty_sigma is not None:
+        occupancy = OccupancyParameters(
+            human_wrist_radius_m=occupancy.human_wrist_radius_m,
+            human_arm_radius_m=occupancy.human_arm_radius_m,
+            human_torso_radius_m=occupancy.human_torso_radius_m,
+            robot_link_radius_m=occupancy.robot_link_radius_m,
+            robot_hand_radius_m=occupancy.robot_hand_radius_m,
+            uncertainty_sigma=uncertainty_sigma,
+        )
     simulation = PandaSimulation(
         model_path=config.robot.model_path,
         control_timestep_seconds=config.simulation.timestep_seconds,
@@ -120,6 +181,9 @@ def _run_controller(
     first_stop_timestamp = None
     idle_time = 0.0
     minimum_actual_clearance = float("inf")
+    safety_violations = 0
+    violation_active = False
+    timestep_records: list[ControllerTimestep] = []
 
     for observation_frame, truth_frame in zip(
         scenario.observation_frames, scenario.ground_truth_frames, strict=True
@@ -134,6 +198,11 @@ def _run_controller(
         actual_clearance = current_clearance(truth_frame, robot_state, occupancy)
         measured_clearance = current_clearance(observation_frame, robot_state, occupancy)
         minimum_actual_clearance = min(minimum_actual_clearance, actual_clearance)
+        if actual_clearance <= 0 and not violation_active:
+            safety_violations += 1
+            violation_active = True
+        elif actual_clearance > 0:
+            violation_active = False
         human_state = estimator.update(observation_frame)
         prediction = predictor.predict(human_state, config.prediction.horizons_seconds)
         wall_times = tuple(item.timestamp for item in prediction.slices)
@@ -161,15 +230,35 @@ def _run_controller(
                 first_stop_timestamp = truth_frame.timestamp
         previous_mode = decision.mode
         velocity_scale = decision.command.velocity_scale
+        timestep_records.append(
+            ControllerTimestep(
+                timestamp=truth_frame.timestamp,
+                mode=decision.mode,
+                velocity_scale=velocity_scale,
+                actual_clearance_m=actual_clearance,
+                measured_clearance_m=measured_clearance,
+                predicted_clearance_m=(
+                    predicted_risk.minimum_clearance_m
+                    if predicted_risk is not None
+                    else measured_clearance
+                ),
+                task_progress_seconds=simulation.trajectory_time,
+            )
+        )
 
-    return ControllerMetrics(
-        controller=name,
-        minimum_actual_clearance_m=minimum_actual_clearance,
-        intervention_count=interventions,
-        stop_count=stops,
-        idle_time_seconds=idle_time,
-        final_task_progress_seconds=simulation.trajectory_time,
-        final_mode=previous_mode,
-        first_intervention_timestamp=first_intervention_timestamp,
-        first_stop_timestamp=first_stop_timestamp,
+    return ControllerTrialResult(
+        metrics=ControllerMetrics(
+            controller=name,
+            minimum_actual_clearance_m=minimum_actual_clearance,
+            intervention_count=interventions,
+            stop_count=stops,
+            idle_time_seconds=idle_time,
+            final_task_progress_seconds=simulation.trajectory_time,
+            final_mode=previous_mode,
+            first_intervention_timestamp=first_intervention_timestamp,
+            first_stop_timestamp=first_stop_timestamp,
+            safety_violation_count=safety_violations,
+            productivity_ratio=(simulation.trajectory_time / scenario.duration_seconds),
+        ),
+        timesteps=tuple(timestep_records),
     )

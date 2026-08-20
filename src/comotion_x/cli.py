@@ -15,6 +15,7 @@ from comotion_x.core.models import RiskAssessment, SafetyMode
 from comotion_x.core.reproducibility import seed_everything
 from comotion_x.estimation.state_estimator import HumanStateEstimator
 from comotion_x.evaluation.controllers import compare_controllers
+from comotion_x.evaluation.experiments import run_experiment_suite
 from comotion_x.evaluation.prediction import evaluate_scenario_prediction
 from comotion_x.human_model.replay import HumanReplay
 from comotion_x.human_model.scenarios import ScenarioName, generate_scenario
@@ -85,6 +86,15 @@ def build_parser() -> argparse.ArgumentParser:
     compare.add_argument(
         "--scenario", choices=[name.value for name in ScenarioName], default="crossing"
     )
+
+    experiments = subparsers.add_parser(
+        "run-experiments", help="run the reproducible M6 experiment suite"
+    )
+    experiments.add_argument("--config", type=Path, default=Path("config/default.toml"))
+    experiments.add_argument(
+        "--seeds", default="42", help="comma-separated non-negative random seeds"
+    )
+    experiments.add_argument("--output", type=Path, default=Path("results/runs/latest"))
     return parser
 
 
@@ -291,6 +301,23 @@ def run_controller_comparison(config_path: Path, scenario_name: str) -> int:
     return 0
 
 
+def run_experiments(config_path: Path, seeds_text: str, output: Path) -> int:
+    config = load_config(config_path)
+    try:
+        seeds = tuple(int(value.strip()) for value in seeds_text.split(",") if value.strip())
+    except ValueError as error:
+        raise ValueError("--seeds must contain comma-separated integers") from error
+    artifacts = run_experiment_suite(config, seeds=seeds, output_directory=output)
+    emit_event(
+        "experiment_suite_completed",
+        output_directory=str(artifacts.output_directory),
+        trial_count=artifacts.trial_count,
+        timestep_count=artifacts.timestep_count,
+        files=[str(path) for path in artifacts.files],
+    )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     load_dotenv()
     args = build_parser().parse_args(argv)
@@ -308,4 +335,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_risk_evaluation(args.config, args.scenario)
     if args.command == "compare-controllers":
         return run_controller_comparison(args.config, args.scenario)
+    if args.command == "run-experiments":
+        return run_experiments(args.config, args.seeds, args.output)
     raise RuntimeError(f"Unhandled command: {args.command}")
