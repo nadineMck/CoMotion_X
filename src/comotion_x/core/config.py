@@ -36,6 +36,13 @@ class HumanConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class EstimationConfig:
+    observation_noise_standard_deviation_m: float
+    process_acceleration_standard_deviation_mps2: float
+    initial_velocity_standard_deviation_mps: float
+
+
+@dataclass(frozen=True, slots=True)
 class PredictionConfig:
     horizons_seconds: tuple[float, ...]
 
@@ -53,6 +60,7 @@ class AppConfig:
     simulation: SimulationConfig
     robot: RobotConfig
     human: HumanConfig
+    estimation: EstimationConfig
     prediction: PredictionConfig
     safety: SafetyConfig
 
@@ -73,6 +81,7 @@ def load_config(path: Path | str) -> AppConfig:
     simulation = _section(raw, "simulation")
     robot = _section(raw, "robot")
     human = _section(raw, "human")
+    estimation = _section(raw, "estimation")
     prediction = _section(raw, "prediction")
     safety = _section(raw, "safety")
 
@@ -92,6 +101,17 @@ def load_config(path: Path | str) -> AppConfig:
             frames_per_second=float(human["frames_per_second"]),
             noise_standard_deviation_m=float(human["noise_standard_deviation_m"]),
             dropout_probability=float(human["dropout_probability"]),
+        ),
+        estimation=EstimationConfig(
+            observation_noise_standard_deviation_m=float(
+                estimation["observation_noise_standard_deviation_m"]
+            ),
+            process_acceleration_standard_deviation_mps2=float(
+                estimation["process_acceleration_standard_deviation_mps2"]
+            ),
+            initial_velocity_standard_deviation_mps=float(
+                estimation["initial_velocity_standard_deviation_mps"]
+            ),
         ),
         prediction=PredictionConfig(
             horizons_seconds=tuple(float(value) for value in prediction["horizons_seconds"])
@@ -119,6 +139,12 @@ def _validate(config: AppConfig) -> None:
         raise ValueError("human observation noise must be non-negative")
     if not 0 <= config.human.dropout_probability <= 1:
         raise ValueError("human dropout probability must be between 0 and 1")
+    if config.estimation.observation_noise_standard_deviation_m <= 0:
+        raise ValueError("estimation observation noise must be positive")
+    if config.estimation.process_acceleration_standard_deviation_mps2 <= 0:
+        raise ValueError("estimation process acceleration noise must be positive")
+    if config.estimation.initial_velocity_standard_deviation_mps <= 0:
+        raise ValueError("estimation initial velocity uncertainty must be positive")
     if not config.prediction.horizons_seconds:
         raise ValueError("at least one prediction horizon is required")
     if any(value <= 0 for value in config.prediction.horizons_seconds):

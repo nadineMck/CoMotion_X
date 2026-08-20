@@ -17,6 +17,11 @@ frames_per_second = 30.0
 noise_standard_deviation_m = 0.0
 dropout_probability = 0.0
 
+[estimation]
+observation_noise_standard_deviation_m = 0.015
+process_acceleration_standard_deviation_mps2 = 1.5
+initial_velocity_standard_deviation_mps = 0.75
+
 [prediction]
 horizons_seconds = [0.1, 0.2, 0.3, 0.5]
 

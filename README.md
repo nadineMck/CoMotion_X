@@ -5,7 +5,7 @@
 CoMotion-X is a research prototype for comparing reactive robot-safety control with
 uncertainty-aware prediction of short-horizon human motion.
 
-The project is currently at **M2: deterministic human scenario generation and replay**. See
+The project is currently at **M3: filtered human-state estimation and prediction**. See
 [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the complete roadmap.
 
 ## Requirements
@@ -53,12 +53,28 @@ Available scenarios are `stationary`, `slow_approach`, `sudden_reach`, `crossing
 `near_miss`, `withdrawal`, `occlusion`, and `variable_speed`. Each exported file contains
 clean ground-truth frames and separate noisy/dropout-affected observation frames.
 
+Evaluate uncertainty-aware right-wrist predictions at the configured horizons:
+
+```bash
+uv run comotion-x evaluate-prediction \
+  --config config/default.toml \
+  --scenario variable_speed
+```
+
+The estimator tracks 3D position and velocity with a per-joint constant-velocity Kalman
+filter. During missing observations it propagates the state forward and expands covariance.
+The evaluator reports prediction error, RMSE, empirical 95% uncertainty coverage, and mean
+uncertainty radius at 100, 200, 300, and 500 ms.
+
 ## Current structure
 
 ```text
 config/                 Experiment configuration
 src/comotion_x/core/    Shared types, configuration, logging, reproducibility
+src/comotion_x/estimation/  Kalman filtering and human motion-state estimation
+src/comotion_x/evaluation/  Prediction metrics and experiment helpers
 src/comotion_x/human_model/  Human scenario generation and timestamped replay
+src/comotion_x/prediction/  Short-horizon prediction and covariance propagation
 src/comotion_x/robot/   MuJoCo state, trajectory, and reaching simulation
 tests/                  Automated tests
 data/                   Input and generated scenario data

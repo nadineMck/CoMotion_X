@@ -13,6 +13,7 @@ from comotion_x.core.config import load_config
 from comotion_x.core.logging import emit_event
 from comotion_x.core.models import RiskAssessment, SafetyMode
 from comotion_x.core.reproducibility import seed_everything
+from comotion_x.evaluation.prediction import evaluate_scenario_prediction
 from comotion_x.human_model.replay import HumanReplay
 from comotion_x.human_model.scenarios import ScenarioName, generate_scenario
 from comotion_x.robot.simulation import PandaSimulation
@@ -55,6 +56,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     replay.add_argument("--config", type=Path, default=Path("config/default.toml"))
     replay.add_argument("--scenario", choices=[name.value for name in ScenarioName], default=None)
+
+    evaluate = subparsers.add_parser(
+        "evaluate-prediction", help="evaluate M3 wrist prediction by horizon"
+    )
+    evaluate.add_argument("--config", type=Path, default=Path("config/default.toml"))
+    evaluate.add_argument(
+        "--scenario", choices=[name.value for name in ScenarioName], default="variable_speed"
+    )
     return parser
 
 
@@ -151,6 +160,27 @@ def run_human_replay(config_path: Path, scenario_name: str | None) -> int:
     return 0
 
 
+def run_prediction_evaluation(config_path: Path, scenario_name: str) -> int:
+    config = load_config(config_path)
+    scenario = _scenario_from_config(config, scenario_name)
+    metrics = evaluate_scenario_prediction(
+        scenario,
+        config.prediction.horizons_seconds,
+        observation_std_m=config.estimation.observation_noise_standard_deviation_m,
+        acceleration_std_mps2=(
+            config.estimation.process_acceleration_standard_deviation_mps2
+        ),
+        initial_velocity_std_mps=config.estimation.initial_velocity_standard_deviation_mps,
+    )
+    emit_event(
+        "prediction_evaluation_completed",
+        scenario=scenario.name.value,
+        joint="right_wrist",
+        horizons={str(metric.horizon_seconds): metric.as_dict() for metric in metrics},
+    )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     load_dotenv()
     args = build_parser().parse_args(argv)
@@ -162,4 +192,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_generate_scenarios(args.config, args.output)
     if args.command == "replay-human":
         return run_human_replay(args.config, args.scenario)
+    if args.command == "evaluate-prediction":
+        return run_prediction_evaluation(args.config, args.scenario)
     raise RuntimeError(f"Unhandled command: {args.command}")
