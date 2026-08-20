@@ -17,6 +17,15 @@ frames_per_second = 30.0
 noise_standard_deviation_m = 0.0
 dropout_probability = 0.0
 
+[camera]
+device_id = 0
+model_path = "models/pose_landmarker_lite.task"
+calibration_path = "config/camera_to_world.json"
+minimum_landmark_confidence = 0.50
+width = 1280
+height = 720
+maximum_duration_seconds = 30.0
+
 [estimation]
 observation_noise_standard_deviation_m = 0.015
 process_acceleration_standard_deviation_mps2 = 0.35

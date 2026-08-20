@@ -5,7 +5,7 @@
 CoMotion-X is a research prototype for comparing reactive robot-safety control with
 uncertainty-aware prediction of short-horizon human motion.
 
-The project is currently at **M6: reproducible experiments and quantitative results**. See
+The project is currently at **M7: laptop-camera and recorded-video pose integration**. See
 [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the complete roadmap.
 
 ## Requirements
@@ -117,6 +117,42 @@ uncertainty-aware predictive controllers. It creates:
 Generated results are intentionally ignored by Git and can be reproduced from the committed
 configuration and command.
 
+## Camera and recorded-video testing
+
+Download and verify the pinned MediaPipe Pose Landmarker Lite model:
+
+```bash
+uv run comotion-x prepare-camera-model --config config/default.toml
+```
+
+Run the laptop webcam for 30 seconds with a live skeleton and safety-status overlay:
+
+```bash
+uv run comotion-x camera \
+  --config config/default.toml \
+  --device 0 \
+  --duration 30 \
+  --display \
+  --record-poses data/raw/webcam_session.json
+```
+
+Press `q` to close the display. On macOS, grant the terminal or Codex application camera
+access under **System Settings → Privacy & Security → Camera** before the first run.
+
+Use a recorded video for reproducible perception tests:
+
+```bash
+uv run comotion-x camera \
+  --config config/default.toml \
+  --video data/raw/test_video.mp4 \
+  --record-poses data/processed/test_video_poses.json
+```
+
+MediaPipe's body-relative 3D pose is converted into the MuJoCo world frame using
+`config/camera_to_world.json`. Its included transform is an initial demonstration alignment;
+translation and orientation must be calibrated for the physical camera position before using
+measured distances as experimental results.
+
 ## Current structure
 
 ```text
@@ -126,6 +162,7 @@ src/comotion_x/estimation/  Kalman filtering and human motion-state estimation
 src/comotion_x/evaluation/  Prediction metrics and experiment helpers
 src/comotion_x/human_model/  Human scenario generation and timestamped replay
 src/comotion_x/prediction/  Short-horizon prediction and covariance propagation
+src/comotion_x/perception/  Camera/video capture, calibration, and MediaPipe pose
 src/comotion_x/robot/   MuJoCo state, trajectory, and reaching simulation
 src/comotion_x/safety/  Occupancy geometry and spatiotemporal collision risk
 tests/                  Automated tests

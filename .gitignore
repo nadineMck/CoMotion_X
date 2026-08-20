@@ -19,4 +19,5 @@ dist/
 results/runs/*
 results/figures/*
 results/tables/*
+models/*.task
 !results/**/.gitkeep

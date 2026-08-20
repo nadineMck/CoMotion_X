@@ -36,6 +36,17 @@ class HumanConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class CameraConfig:
+    device_id: int
+    model_path: Path
+    calibration_path: Path
+    minimum_landmark_confidence: float
+    width: int
+    height: int
+    maximum_duration_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
 class EstimationConfig:
     observation_noise_standard_deviation_m: float
     process_acceleration_standard_deviation_mps2: float
@@ -74,6 +85,7 @@ class AppConfig:
     simulation: SimulationConfig
     robot: RobotConfig
     human: HumanConfig
+    camera: CameraConfig
     estimation: EstimationConfig
     prediction: PredictionConfig
     occupancy: OccupancyConfig
@@ -96,6 +108,7 @@ def load_config(path: Path | str) -> AppConfig:
     simulation = _section(raw, "simulation")
     robot = _section(raw, "robot")
     human = _section(raw, "human")
+    camera = _section(raw, "camera")
     estimation = _section(raw, "estimation")
     prediction = _section(raw, "prediction")
     occupancy = _section(raw, "occupancy")
@@ -117,6 +130,15 @@ def load_config(path: Path | str) -> AppConfig:
             frames_per_second=float(human["frames_per_second"]),
             noise_standard_deviation_m=float(human["noise_standard_deviation_m"]),
             dropout_probability=float(human["dropout_probability"]),
+        ),
+        camera=CameraConfig(
+            device_id=int(camera["device_id"]),
+            model_path=Path(str(camera["model_path"])),
+            calibration_path=Path(str(camera["calibration_path"])),
+            minimum_landmark_confidence=float(camera["minimum_landmark_confidence"]),
+            width=int(camera["width"]),
+            height=int(camera["height"]),
+            maximum_duration_seconds=float(camera["maximum_duration_seconds"]),
         ),
         estimation=EstimationConfig(
             observation_noise_standard_deviation_m=float(
@@ -167,6 +189,12 @@ def _validate(config: AppConfig) -> None:
         raise ValueError("human observation noise must be non-negative")
     if not 0 <= config.human.dropout_probability <= 1:
         raise ValueError("human dropout probability must be between 0 and 1")
+    if config.camera.device_id < 0 or config.camera.width <= 0 or config.camera.height <= 0:
+        raise ValueError("camera device and dimensions must be non-negative/positive")
+    if not 0 <= config.camera.minimum_landmark_confidence <= 1:
+        raise ValueError("camera landmark confidence must be between 0 and 1")
+    if config.camera.maximum_duration_seconds <= 0:
+        raise ValueError("camera maximum duration must be positive")
     if config.estimation.observation_noise_standard_deviation_m <= 0:
         raise ValueError("estimation observation noise must be positive")
     if config.estimation.process_acceleration_standard_deviation_mps2 <= 0:

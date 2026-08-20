@@ -13,6 +13,8 @@ def test_default_config_loads() -> None:
     assert config.robot.model_path.name == "comotion_scene.xml"
     assert config.robot.move_duration_seconds == 1.5
     assert config.human.scenario == "crossing"
+    assert config.camera.device_id == 0
+    assert config.camera.model_path.suffix == ".task"
     assert config.estimation.observation_noise_standard_deviation_m == 0.015
     assert config.occupancy.uncertainty_sigma == 2.0
     assert config.prediction.horizons_seconds == (0.1, 0.2, 0.3, 0.5)
@@ -38,6 +40,14 @@ duration_seconds = 1.0
 frames_per_second = 30.0
 noise_standard_deviation_m = 0.0
 dropout_probability = 0.0
+[camera]
+device_id = 0
+model_path = "model.task"
+calibration_path = "calibration.json"
+minimum_landmark_confidence = 0.5
+width = 640
+height = 480
+maximum_duration_seconds = 10.0
 [estimation]
 observation_noise_standard_deviation_m = 0.01
 process_acceleration_standard_deviation_mps2 = 1.0

@@ -12,8 +12,10 @@ license = { text = "MIT" }
 authors = [{ name = "CoMotion-X contributors" }]
 dependencies = [
   "matplotlib>=3.9,<4",
+  "mediapipe>=0.10,<0.11",
   "mujoco>=3.3,<4",
   "numpy>=1.26,<3",
+  "opencv-contrib-python>=4.10,<5",
   "python-dotenv>=1.0,<2",
 ]
 

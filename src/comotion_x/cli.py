@@ -19,6 +19,11 @@ from comotion_x.evaluation.experiments import run_experiment_suite
 from comotion_x.evaluation.prediction import evaluate_scenario_prediction
 from comotion_x.human_model.replay import HumanReplay
 from comotion_x.human_model.scenarios import ScenarioName, generate_scenario
+from comotion_x.perception.calibration import CameraWorldTransform
+from comotion_x.perception.camera import OpenCVFrameSource
+from comotion_x.perception.live import run_live_camera
+from comotion_x.perception.model import download_pose_model, verify_pose_model
+from comotion_x.perception.pose_estimator import MediaPipePoseEstimator
 from comotion_x.prediction.motion_predictor import HumanMotionPredictor
 from comotion_x.robot.simulation import PandaSimulation
 from comotion_x.safety.occupancy import OccupancyParameters
@@ -95,6 +100,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--seeds", default="42", help="comma-separated non-negative random seeds"
     )
     experiments.add_argument("--output", type=Path, default=Path("results/runs/latest"))
+
+    prepare_camera = subparsers.add_parser(
+        "prepare-camera-model", help="download and verify the pinned MediaPipe pose model"
+    )
+    prepare_camera.add_argument("--config", type=Path, default=Path("config/default.toml"))
+
+    camera = subparsers.add_parser(
+        "camera", help="run live or recorded camera pose control with the simulated Panda"
+    )
+    camera.add_argument("--config", type=Path, default=Path("config/default.toml"))
+    source_group = camera.add_mutually_exclusive_group()
+    source_group.add_argument("--device", type=int, default=None, help="webcam device index")
+    source_group.add_argument("--video", type=Path, default=None, help="recorded video path")
+    camera.add_argument("--duration", type=float, default=None)
+    camera.add_argument("--display", action="store_true", help="show the camera overlay; q exits")
+    camera.add_argument("--record-poses", type=Path, default=None)
     return parser
 
 
@@ -318,6 +339,61 @@ def run_experiments(config_path: Path, seeds_text: str, output: Path) -> int:
     return 0
 
 
+def prepare_camera_model(config_path: Path) -> int:
+    config = load_config(config_path)
+    if not verify_pose_model(config.camera.model_path):
+        download_pose_model(config.camera.model_path)
+    emit_event(
+        "camera_model_ready",
+        model_path=str(config.camera.model_path),
+        verified=verify_pose_model(config.camera.model_path),
+    )
+    return 0
+
+
+def run_camera(
+    config_path: Path,
+    *,
+    device: int | None,
+    video: Path | None,
+    duration: float | None,
+    display: bool,
+    record_poses: Path | None,
+) -> int:
+    config = load_config(config_path)
+    if not verify_pose_model(config.camera.model_path):
+        raise FileNotFoundError("camera model is not ready; run `comotion-x prepare-camera-model`")
+    transform = CameraWorldTransform.from_json(config.camera.calibration_path)
+    source_value = (
+        video
+        if video is not None
+        else (device if device is not None else config.camera.device_id)
+    )
+    maximum_duration = duration or config.camera.maximum_duration_seconds
+    if maximum_duration <= 0:
+        raise ValueError("camera duration must be positive")
+    with OpenCVFrameSource(
+        source_value,
+        width=config.camera.width,
+        height=config.camera.height,
+    ) as source:
+        with MediaPipePoseEstimator(
+            config.camera.model_path,
+            transform,
+            minimum_confidence=config.camera.minimum_landmark_confidence,
+        ) as detector:
+            summary = run_live_camera(
+                config,
+                source,
+                detector,
+                maximum_duration_seconds=maximum_duration,
+                display=display,
+                recorded_pose_path=record_poses,
+            )
+    emit_event("camera_session_completed", **summary.as_dict())
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     load_dotenv()
     args = build_parser().parse_args(argv)
@@ -337,4 +413,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_controller_comparison(args.config, args.scenario)
     if args.command == "run-experiments":
         return run_experiments(args.config, args.seeds, args.output)
+    if args.command == "prepare-camera-model":
+        return prepare_camera_model(args.config)
+    if args.command == "camera":
+        return run_camera(
+            args.config,
+            device=args.device,
+            video=args.video,
+            duration=args.duration,
+            display=args.display,
+            record_poses=args.record_poses,
+        )
     raise RuntimeError(f"Unhandled command: {args.command}")
