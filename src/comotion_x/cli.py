@@ -115,7 +115,12 @@ def build_parser() -> argparse.ArgumentParser:
     source_group = camera.add_mutually_exclusive_group()
     source_group.add_argument("--device", type=int, default=None, help="webcam device index")
     source_group.add_argument("--video", type=Path, default=None, help="recorded video path")
-    camera.add_argument("--duration", type=float, default=None)
+    camera.add_argument(
+        "--duration",
+        type=float,
+        default=None,
+        help="optional session limit in seconds; omit to run until closed",
+    )
     camera.add_argument("--display", action="store_true", help="show the camera overlay; q exits")
     camera.add_argument(
         "--robot-display", action="store_true", help="show the synchronized MuJoCo 3D viewer"
@@ -375,8 +380,7 @@ def run_camera(
         if video is not None
         else (device if device is not None else config.camera.device_id)
     )
-    maximum_duration = duration or config.camera.maximum_duration_seconds
-    if maximum_duration <= 0:
+    if duration is not None and duration <= 0:
         raise ValueError("camera duration must be positive")
     if robot_display and platform.system() == "Darwin" and "MJPYTHON_BIN" not in os.environ:
         raise RuntimeError(
@@ -397,7 +401,7 @@ def run_camera(
                 config,
                 source,
                 detector,
-                maximum_duration_seconds=maximum_duration,
+                maximum_duration_seconds=duration,
                 display=display,
                 show_robot=robot_display,
                 recorded_pose_path=record_poses,

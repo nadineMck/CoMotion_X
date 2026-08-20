@@ -130,3 +130,20 @@ def test_live_pipeline_records_poses_without_physical_camera(tmp_path) -> None:
     assert summary.mean_inference_latency_ms == pytest.approx(10.0)
     assert output.is_file()
 
+
+def test_live_pipeline_without_duration_runs_until_source_closes() -> None:
+    config = load_config("config/default.toml")
+    image = np.zeros((24, 32, 3), dtype=np.uint8)
+    frames = [
+        CapturedFrame(image_bgr=image.copy(), timestamp=timestamp, index=index)
+        for index, timestamp in enumerate((0.0, 60.0, 120.0))
+    ]
+
+    summary = run_live_camera(
+        config,
+        FakeSource(frames),
+        FakeDetector({}),
+        maximum_duration_seconds=None,
+    )
+
+    assert summary.frames_read == 3

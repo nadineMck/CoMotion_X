@@ -125,18 +125,19 @@ Download and verify the pinned MediaPipe Pose Landmarker Lite model:
 uv run comotion-x prepare-camera-model --config config/default.toml
 ```
 
-Run the laptop webcam for 30 seconds with a live skeleton and safety-status overlay:
+Run the laptop webcam continuously with a live skeleton and safety-status overlay:
 
 ```bash
 uv run comotion-x camera \
   --config config/default.toml \
   --device 0 \
-  --duration 30 \
   --display \
   --record-poses data/raw/webcam_session.json
 ```
 
-Press `q` to close the display. On macOS, grant the terminal or Codex application camera
+The session has no time limit when `--duration` is omitted. Press `q`, close the window, or
+use `Ctrl+C` to stop it. Add `--duration 30` when you want a timed 30-second test. On macOS,
+grant the terminal or Codex application camera
 access under **System Settings → Privacy & Security → Camera** before the first run.
 
 Use a recorded video for reproducible perception tests:
@@ -162,13 +163,12 @@ the camera overlay and 3D Panda/digital-human scene at the same time, run:
 .venv/bin/mjpython -m comotion_x camera \
   --config config/default.toml \
   --device 0 \
-  --duration 30 \
   --display \
   --robot-display \
   --record-poses data/raw/webcam_visualization.json
 ```
 
-The red markers are the tracked human joints. The translucent yellow sphere sequence shows
+This command runs until you close it. The red markers are the tracked human joints. The translucent yellow sphere sequence shows
 the predicted right-wrist positions at 100, 200, 300, and 500 ms; sphere size represents
 prediction uncertainty. Closing the MuJoCo window or pressing `q` in the camera window ends
 the session.

@@ -82,7 +82,7 @@ def run_live_camera(
     source: FrameSource,
     detector: PoseDetector,
     *,
-    maximum_duration_seconds: float,
+    maximum_duration_seconds: float | None,
     display: bool = False,
     show_robot: bool = False,
     recorded_pose_path: Path | None = None,
@@ -143,7 +143,12 @@ def run_live_camera(
             if display_stop is not None and display_stop.is_set():
                 break
             captured = source.read()
-            if captured is None or captured.timestamp > maximum_duration_seconds:
+            if captured is None:
+                break
+            if (
+                maximum_duration_seconds is not None
+                and captured.timestamp > maximum_duration_seconds
+            ):
                 break
             frames_read += 1
             with viewer.lock() if viewer is not None else nullcontext():
