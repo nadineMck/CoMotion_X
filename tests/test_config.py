@@ -14,6 +14,7 @@ def test_default_config_loads() -> None:
     assert config.robot.move_duration_seconds == 1.5
     assert config.human.scenario == "crossing"
     assert config.estimation.observation_noise_standard_deviation_m == 0.015
+    assert config.occupancy.uncertainty_sigma == 2.0
     assert config.prediction.horizons_seconds == (0.1, 0.2, 0.3, 0.5)
     assert config.safety.critical_distance_m < config.safety.warning_distance_m
 
@@ -43,6 +44,13 @@ process_acceleration_standard_deviation_mps2 = 1.0
 initial_velocity_standard_deviation_mps = 0.5
 [prediction]
 horizons_seconds = [0.1]
+[occupancy]
+human_wrist_radius_m = 0.07
+human_arm_radius_m = 0.06
+human_torso_radius_m = 0.18
+robot_link_radius_m = 0.055
+robot_hand_radius_m = 0.075
+uncertainty_sigma = 2.0
 [safety]
 warning_distance_m = 0.2
 critical_distance_m = 0.3

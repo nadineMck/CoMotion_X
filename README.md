@@ -5,7 +5,7 @@
 CoMotion-X is a research prototype for comparing reactive robot-safety control with
 uncertainty-aware prediction of short-horizon human motion.
 
-The project is currently at **M3: filtered human-state estimation and prediction**. See
+The project is currently at **M4: spatiotemporal occupancy and collision-risk estimation**. See
 [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the complete roadmap.
 
 ## Requirements
@@ -66,6 +66,20 @@ filter. During missing observations it propagates the state forward and expands 
 The evaluator reports prediction error, RMSE, empirical 95% uncertainty coverage, and mean
 uncertainty radius at 100, 200, 300, and 500 ms.
 
+Evaluate predicted human–robot clearance over an entire scenario:
+
+```bash
+uv run comotion-x evaluate-risk \
+  --config config/default.toml \
+  --scenario crossing
+```
+
+Human wrists and torso are represented by spheres, arms by capsules, and the Panda by
+capsules along every major link plus a hand sphere. Human volumes expand from predicted
+covariance. The risk engine aligns human and robot trajectories by timestamp and reports the
+minimum signed clearance, time to closest approach, and closest primitive pair. Negative
+clearance means the occupancy volumes overlap.
+
 ## Current structure
 
 ```text
@@ -76,6 +90,7 @@ src/comotion_x/evaluation/  Prediction metrics and experiment helpers
 src/comotion_x/human_model/  Human scenario generation and timestamped replay
 src/comotion_x/prediction/  Short-horizon prediction and covariance propagation
 src/comotion_x/robot/   MuJoCo state, trajectory, and reaching simulation
+src/comotion_x/safety/  Occupancy geometry and spatiotemporal collision risk
 tests/                  Automated tests
 data/                   Input and generated scenario data
 results/                Machine-readable runs, plots, and tables

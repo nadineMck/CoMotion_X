@@ -48,6 +48,16 @@ class PredictionConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class OccupancyConfig:
+    human_wrist_radius_m: float
+    human_arm_radius_m: float
+    human_torso_radius_m: float
+    robot_link_radius_m: float
+    robot_hand_radius_m: float
+    uncertainty_sigma: float
+
+
+@dataclass(frozen=True, slots=True)
 class SafetyConfig:
     warning_distance_m: float
     critical_distance_m: float
@@ -62,6 +72,7 @@ class AppConfig:
     human: HumanConfig
     estimation: EstimationConfig
     prediction: PredictionConfig
+    occupancy: OccupancyConfig
     safety: SafetyConfig
 
 
@@ -83,6 +94,7 @@ def load_config(path: Path | str) -> AppConfig:
     human = _section(raw, "human")
     estimation = _section(raw, "estimation")
     prediction = _section(raw, "prediction")
+    occupancy = _section(raw, "occupancy")
     safety = _section(raw, "safety")
 
     config = AppConfig(
@@ -115,6 +127,14 @@ def load_config(path: Path | str) -> AppConfig:
         ),
         prediction=PredictionConfig(
             horizons_seconds=tuple(float(value) for value in prediction["horizons_seconds"])
+        ),
+        occupancy=OccupancyConfig(
+            human_wrist_radius_m=float(occupancy["human_wrist_radius_m"]),
+            human_arm_radius_m=float(occupancy["human_arm_radius_m"]),
+            human_torso_radius_m=float(occupancy["human_torso_radius_m"]),
+            robot_link_radius_m=float(occupancy["robot_link_radius_m"]),
+            robot_hand_radius_m=float(occupancy["robot_hand_radius_m"]),
+            uncertainty_sigma=float(occupancy["uncertainty_sigma"]),
         ),
         safety=SafetyConfig(
             warning_distance_m=float(safety["warning_distance_m"]),
@@ -151,6 +171,17 @@ def _validate(config: AppConfig) -> None:
         raise ValueError("prediction horizons must be positive")
     if tuple(sorted(config.prediction.horizons_seconds)) != config.prediction.horizons_seconds:
         raise ValueError("prediction horizons must be in ascending order")
+    occupancy_values = (
+        config.occupancy.human_wrist_radius_m,
+        config.occupancy.human_arm_radius_m,
+        config.occupancy.human_torso_radius_m,
+        config.occupancy.robot_link_radius_m,
+        config.occupancy.robot_hand_radius_m,
+    )
+    if any(value <= 0 for value in occupancy_values):
+        raise ValueError("occupancy radii must be positive")
+    if config.occupancy.uncertainty_sigma < 0:
+        raise ValueError("occupancy uncertainty sigma must be non-negative")
     if not 0 < config.safety.critical_distance_m < config.safety.warning_distance_m:
         raise ValueError("critical distance must be positive and smaller than warning distance")
     if not 0 <= config.safety.slow_velocity_scale <= 1:

@@ -36,6 +36,17 @@ class PlannedTrajectory:
 
 
 @dataclass(frozen=True, slots=True)
+class RobotLinkTrajectorySlice:
+    timestamp: float
+    link_positions_m: dict[str, tuple[float, float, float]]
+
+
+@dataclass(frozen=True, slots=True)
+class RobotLinkTrajectory:
+    slices: tuple[RobotLinkTrajectorySlice, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class SimulationSummary:
     duration_seconds: float
     physics_steps: int
@@ -91,6 +102,7 @@ class PandaSimulation:
             name: self._name_id(mujoco.mjtObj.mjOBJ_BODY, name) for name in LINK_BODY_NAMES
         }
         self._hand_id = self._link_ids["hand"]
+        self._kinematic_data = mujoco.MjData(self.model)
         self._human_mocap_ids: dict[str, int] = {}
         self._human_geom_ids: dict[str, int] = {}
         for body_id in range(self.model.nbody):
@@ -181,6 +193,21 @@ class PandaSimulation:
             for timestamp in times
         )
         return PlannedTrajectory(times=times, joint_positions=positions)
+
+    def planned_link_trajectory(self, times: tuple[float, ...]) -> RobotLinkTrajectory:
+        if not times or any(timestamp < 0 for timestamp in times):
+            raise ValueError("robot trajectory times must be non-empty and non-negative")
+        slices: list[RobotLinkTrajectorySlice] = []
+        for timestamp in times:
+            mujoco.mj_resetDataKeyframe(self.model, self._kinematic_data, 0)
+            self._kinematic_data.qpos[self._qpos_addresses] = self.desired_configuration(timestamp)
+            mujoco.mj_forward(self.model, self._kinematic_data)
+            links = {
+                name: tuple(float(value) for value in self._kinematic_data.xpos[identifier])
+                for name, identifier in self._link_ids.items()
+            }
+            slices.append(RobotLinkTrajectorySlice(timestamp=timestamp, link_positions_m=links))
+        return RobotLinkTrajectory(slices=tuple(slices))
 
     def step(self) -> RobotState:
         desired = self.desired_configuration(float(self.data.time))

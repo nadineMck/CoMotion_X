@@ -13,10 +13,14 @@ from comotion_x.core.config import load_config
 from comotion_x.core.logging import emit_event
 from comotion_x.core.models import RiskAssessment, SafetyMode
 from comotion_x.core.reproducibility import seed_everything
+from comotion_x.estimation.state_estimator import HumanStateEstimator
 from comotion_x.evaluation.prediction import evaluate_scenario_prediction
 from comotion_x.human_model.replay import HumanReplay
 from comotion_x.human_model.scenarios import ScenarioName, generate_scenario
+from comotion_x.prediction.motion_predictor import HumanMotionPredictor
 from comotion_x.robot.simulation import PandaSimulation
+from comotion_x.safety.occupancy import OccupancyParameters
+from comotion_x.safety.risk import CollisionRiskEngine
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -63,6 +67,14 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--config", type=Path, default=Path("config/default.toml"))
     evaluate.add_argument(
         "--scenario", choices=[name.value for name in ScenarioName], default="variable_speed"
+    )
+
+    risk = subparsers.add_parser(
+        "evaluate-risk", help="evaluate M4 predicted human-robot geometric clearance"
+    )
+    risk.add_argument("--config", type=Path, default=Path("config/default.toml"))
+    risk.add_argument(
+        "--scenario", choices=[name.value for name in ScenarioName], default="crossing"
     )
     return parser
 
@@ -181,6 +193,72 @@ def run_prediction_evaluation(config_path: Path, scenario_name: str) -> int:
     return 0
 
 
+def _occupancy_parameters(config) -> OccupancyParameters:
+    return OccupancyParameters(
+        human_wrist_radius_m=config.occupancy.human_wrist_radius_m,
+        human_arm_radius_m=config.occupancy.human_arm_radius_m,
+        human_torso_radius_m=config.occupancy.human_torso_radius_m,
+        robot_link_radius_m=config.occupancy.robot_link_radius_m,
+        robot_hand_radius_m=config.occupancy.robot_hand_radius_m,
+        uncertainty_sigma=config.occupancy.uncertainty_sigma,
+    )
+
+
+def run_risk_evaluation(config_path: Path, scenario_name: str) -> int:
+    config = load_config(config_path)
+    scenario = _scenario_from_config(config, scenario_name)
+    estimator = HumanStateEstimator(
+        observation_std_m=config.estimation.observation_noise_standard_deviation_m,
+        acceleration_std_mps2=config.estimation.process_acceleration_standard_deviation_mps2,
+        initial_velocity_std_mps=config.estimation.initial_velocity_standard_deviation_mps,
+    )
+    predictor = HumanMotionPredictor(
+        acceleration_std_mps2=config.estimation.process_acceleration_standard_deviation_mps2
+    )
+    simulation = PandaSimulation(
+        model_path=config.robot.model_path,
+        control_timestep_seconds=config.simulation.timestep_seconds,
+        move_duration_seconds=config.robot.move_duration_seconds,
+    )
+    engine = CollisionRiskEngine(_occupancy_parameters(config))
+    closest_risk = None
+    closest_source_timestamp = 0.0
+    assessments = 0
+
+    for frame in scenario.observation_frames:
+        state = estimator.update(frame)
+        if "right_wrist" not in state.joints or frame.timestamp < 0.5:
+            continue
+        prediction = predictor.predict(state, config.prediction.horizons_seconds)
+        robot_trajectory = simulation.planned_link_trajectory(
+            tuple(prediction_slice.timestamp for prediction_slice in prediction.slices)
+        )
+        assessment = engine.assess(prediction, robot_trajectory)
+        assessments += 1
+        if (
+            closest_risk is None
+            or assessment.minimum_clearance_m < closest_risk.minimum_clearance_m
+        ):
+            closest_risk = assessment
+            closest_source_timestamp = frame.timestamp
+
+    if closest_risk is None:
+        raise RuntimeError("scenario produced no risk assessments")
+    closest_slice = min(closest_risk.slices, key=lambda item: item.clearance_m)
+    emit_event(
+        "risk_evaluation_completed",
+        scenario=scenario.name.value,
+        assessments=assessments,
+        minimum_clearance_m=round(closest_risk.minimum_clearance_m, 6),
+        collision_predicted=closest_risk.collision_predicted,
+        source_timestamp=round(closest_source_timestamp, 6),
+        time_to_closest_seconds=closest_risk.time_to_closest_seconds,
+        closest_human_primitive=closest_slice.human_primitive,
+        closest_robot_primitive=closest_slice.robot_primitive,
+    )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     load_dotenv()
     args = build_parser().parse_args(argv)
@@ -194,4 +272,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_human_replay(args.config, args.scenario)
     if args.command == "evaluate-prediction":
         return run_prediction_evaluation(args.config, args.scenario)
+    if args.command == "evaluate-risk":
+        return run_risk_evaluation(args.config, args.scenario)
     raise RuntimeError(f"Unhandled command: {args.command}")

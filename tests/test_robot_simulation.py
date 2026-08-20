@@ -47,6 +47,15 @@ def test_planned_trajectory_is_time_aligned() -> None:
     assert not np.allclose(trajectory.joint_positions[0], trajectory.joint_positions[-1])
 
 
+def test_planned_link_trajectory_has_world_positions() -> None:
+    simulation = make_simulation()
+    trajectory = simulation.planned_link_trajectory((0.1, 0.3, 0.5))
+
+    assert [item.timestamp for item in trajectory.slices] == [0.1, 0.3, 0.5]
+    expected_links = set(simulation.state().link_positions_m)
+    assert all(set(item.link_positions_m) == expected_links for item in trajectory.slices)
+
+
 def test_reaching_run_moves_end_effector() -> None:
     simulation = make_simulation()
     summary = simulation.run(duration_seconds=1.1)
