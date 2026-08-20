@@ -11,6 +11,8 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "CoMotion-X contributors" }]
 dependencies = [
+  "mujoco>=3.3,<4",
+  "numpy>=1.26,<3",
   "python-dotenv>=1.0,<2",
 ]
 

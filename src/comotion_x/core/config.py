@@ -21,6 +21,12 @@ class SimulationConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class RobotConfig:
+    model_path: Path
+    move_duration_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
 class PredictionConfig:
     horizons_seconds: tuple[float, ...]
 
@@ -36,6 +42,7 @@ class SafetyConfig:
 class AppConfig:
     project: ProjectConfig
     simulation: SimulationConfig
+    robot: RobotConfig
     prediction: PredictionConfig
     safety: SafetyConfig
 
@@ -54,6 +61,7 @@ def load_config(path: Path | str) -> AppConfig:
 
     project = _section(raw, "project")
     simulation = _section(raw, "simulation")
+    robot = _section(raw, "robot")
     prediction = _section(raw, "prediction")
     safety = _section(raw, "safety")
 
@@ -62,6 +70,10 @@ def load_config(path: Path | str) -> AppConfig:
         simulation=SimulationConfig(
             timestep_seconds=float(simulation["timestep_seconds"]),
             duration_seconds=float(simulation["duration_seconds"]),
+        ),
+        robot=RobotConfig(
+            model_path=Path(str(robot["model_path"])),
+            move_duration_seconds=float(robot["move_duration_seconds"]),
         ),
         prediction=PredictionConfig(
             horizons_seconds=tuple(float(value) for value in prediction["horizons_seconds"])
@@ -81,6 +93,8 @@ def _validate(config: AppConfig) -> None:
         raise ValueError("project.seed must be non-negative")
     if config.simulation.timestep_seconds <= 0 or config.simulation.duration_seconds <= 0:
         raise ValueError("simulation times must be positive")
+    if config.robot.move_duration_seconds <= 0:
+        raise ValueError("robot move duration must be positive")
     if not config.prediction.horizons_seconds:
         raise ValueError("at least one prediction horizon is required")
     if any(value <= 0 for value in config.prediction.horizons_seconds):
@@ -91,4 +105,3 @@ def _validate(config: AppConfig) -> None:
         raise ValueError("critical distance must be positive and smaller than warning distance")
     if not 0 <= config.safety.slow_velocity_scale <= 1:
         raise ValueError("slow velocity scale must be between 0 and 1")
-

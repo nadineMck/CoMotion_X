@@ -6,6 +6,10 @@ seed = 42
 timestep_seconds = 0.01
 duration_seconds = 10.0
 
+[robot]
+model_path = "third_party/mujoco_menagerie/franka_emika_panda/scene.xml"
+move_duration_seconds = 1.5
+
 [prediction]
 horizons_seconds = [0.1, 0.2, 0.3, 0.5]
 
@@ -13,4 +17,3 @@ horizons_seconds = [0.1, 0.2, 0.3, 0.5]
 warning_distance_m = 0.50
 critical_distance_m = 0.25
 slow_velocity_scale = 0.50
-

@@ -10,6 +10,8 @@ def test_default_config_loads() -> None:
 
     assert config.project.name == "CoMotion-X"
     assert config.project.seed == 42
+    assert config.robot.model_path.name == "scene.xml"
+    assert config.robot.move_duration_seconds == 1.5
     assert config.prediction.horizons_seconds == (0.1, 0.2, 0.3, 0.5)
     assert config.safety.critical_distance_m < config.safety.warning_distance_m
 
@@ -24,6 +26,9 @@ seed = 1
 [simulation]
 timestep_seconds = 0.01
 duration_seconds = 1.0
+[robot]
+model_path = "model.xml"
+move_duration_seconds = 1.0
 [prediction]
 horizons_seconds = [0.1]
 [safety]
@@ -35,4 +40,3 @@ slow_velocity_scale = 0.5
 
     with pytest.raises(ValueError, match="critical distance"):
         load_config(path)
-
